@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="cobalt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AeroDrop</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="aurora-bg">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+        <div class="glass-reference-shapes">
+            <span class="shape s1"></span>
+            <span class="shape s2"></span>
+            <span class="shape s3"></span>
+        </div>
+        <div class="grid-overlay"></div>
+    </div>
+
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- MODAL 1: PERMISSION -->
+    <div id="permission-modal" class="modal-backdrop active">
+        <div class="glass-card modal-box">
+            <div class="icon-badge">
+                <i data-lucide="shield-check"></i>
+            </div>
+            <h2>Izin Perangkat</h2>
+            <p class="subtitle">Aktifkan akses sebelum mulai. Tanpa database.</p>
+
+            <div class="permission-list">
+                <div class="perm-item" id="perm-camera-status">
+                    <div class="perm-info">
+                        <i data-lucide="camera"></i>
+                        <div>
+                            <strong>Kamera</strong>
+                            <span>Scan QR sesi</span>
+                        </div>
+                    </div>
+                    <span class="badge pending">Menunggu</span>
+                </div>
+                <div class="perm-item" id="perm-storage-status">
+                    <div class="perm-info">
+                        <i data-lucide="folder-check"></i>
+                        <div>
+                            <strong>File Lokal</strong>
+                            <span>Kirim & simpan file</span>
+                        </div>
+                    </div>
+                    <span class="badge pending">Menunggu</span>
+                </div>
+            </div>
+
+            <div class="device-input-group">
+                <label>Nama Perangkat</label>
+                <input type="text" id="device-name-input" placeholder="Contoh: Laptop / HP" maxlength="25">
+            </div>
+
+            <button id="btn-grant-permissions" class="btn-primary full-width">
+                <i data-lucide="unlock"></i> Mulai
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL 2: PENGATURAN -->
+    <div id="settings-modal" class="modal-backdrop">
+        <div class="glass-card modal-box">
+            <div class="modal-header">
+                <h3 class="inline-title"><i data-lucide="sliders"></i> <span>Pengaturan</span></h3>
+                <button class="btn-icon close-modal" data-target="settings-modal"><i data-lucide="x"></i></button>
+            </div>
+
+            <div class="setting-group">
+                <label>Tema</label>
+                <div class="theme-selector">
+                    <button class="theme-chip active" data-set-theme="cobalt">
+                        <span class="dot cobalt"></span> Cobalt
+                    </button>
+                    <button class="theme-chip" data-set-theme="aurora">
+                        <span class="dot aurora"></span> Aurora
+                    </button>
+                    <button class="theme-chip" data-set-theme="obsidian">
+                        <span class="dot obsidian"></span> Obsidian
+                    </button>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <label>Blur Glass (<span id="blur-val">20px</span>)</label>
+                <input type="range" id="blur-slider" min="4" max="48" value="20" class="glass-slider">
+            </div>
+
+            <div class="setting-group row-between">
+                <strong>Grid Latar</strong>
+                <label class="switch">
+                    <input type="checkbox" id="toggle-grid" checked>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+
+            <div class="setting-group row-between">
+                <strong>Notifikasi</strong>
+                <label class="switch">
+                    <input type="checkbox" id="toggle-notif" checked>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <main class="app-container">
+        <header class="glass-nav">
+            <div class="brand">
+                <div class="brand-logo"><i data-lucide="radio"></i></div>
+                <div class="brand-text">
+                    <h1>AeroDrop</h1>
+                    <span class="session-pill" id="session-badge">Sesi: ---</span>
+                </div>
+            </div>
+            <div class="nav-actions">
+                <button id="btn-refresh-qr" class="btn-glass nowrap" title="Reset Sesi">
+                    <i data-lucide="refresh-cw"></i> <span>Reset</span>
+                </button>
+                <button id="btn-open-settings" class="btn-icon" title="Pengaturan">
+                    <i data-lucide="settings"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- VIEW 1: KONEKSI -->
+        <section id="view-connect" class="view-section active">
+            <div class="hero-text">
+                <h2>Kirim Data Instan</h2>
+                <p>Scan QR atau masukkan ID Sesi.</p>
+            </div>
+
+            <div class="connect-grid">
+                <div class="glass-card qr-card">
+                    <div class="card-tag">QR SESI</div>
+                    <div class="qr-wrapper">
+                        <div id="qrcode"></div>
+                    </div>
+                    <p class="qr-hint">Berubah otomatis saat tutup/refresh.</p>
+
+                    <div class="room-code-copy">
+                        <span>ID: <strong id="display-room-id">---</strong></span>
+                        <div class="copy-btns">
+                            <button id="btn-copy-id" class="btn-mini nowrap"><i data-lucide="hash"></i> ID</button>
+                            <button id="btn-copy-link" class="btn-mini nowrap"><i data-lucide="copy"></i> Link</button>
+                        </div>
+                    </div>
+
+                    <div class="join-id-box">
+                        <input type="text" id="manual-room-input" placeholder="ID Sesi (cth: AERO-123ABC)" maxlength="20">
+                        <button id="btn-join-by-id" class="btn-mini primary-mini nowrap"><i data-lucide="log-in"></i> Gabung</button>
+                    </div>
+                </div>
+
+                <div class="glass-card scanner-card">
+                    <div class="card-tag">SCAN QR</div>
+                    <div id="qr-reader" class="scanner-viewport"></div>
+                    <div class="scanner-controls">
+                        <button id="btn-start-scan" class="btn-primary nowrap">
+                            <i data-lucide="scan-line"></i> Buka Kamera
+                        </button>
+                        <button id="btn-stop-scan" class="btn-glass nowrap hidden">
+                            <i data-lucide="camera-off"></i> Tutup
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 2: PILIH PERAN -->
+        <section id="view-role" class="view-section">
+            <div class="glass-card role-container">
+                <div class="connected-banner">
+                    <i data-lucide="check-circle-2"></i>
+                    <span>Sesi <strong id="connected-room-label"></strong></span>
+                </div>
+                <h2>Pilih Peran</h2>
+
+                <div class="role-cards">
+                    <div class="role-option" id="choose-sender">
+                        <div class="role-icon sender-glow"><i data-lucide="send"></i></div>
+                        <h3>Pengirim</h3>
+                        <p>Kirim file & link ke satu atau banyak penerima.</p>
+                        <span class="role-cta">Pilih <i data-lucide="arrow-right"></i></span>
+                    </div>
+
+                    <div class="role-option" id="choose-receiver">
+                        <div class="role-icon receiver-glow"><i data-lucide="download-cloud"></i></div>
+                        <h3>Penerima</h3>
+                        <p>Lihat, buka link, atau unduh file manual.</p>
+                        <span class="role-cta">Pilih <i data-lucide="arrow-right"></i></span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 3: WORKSPACE -->
+        <section id="view-workspace" class="view-section">
+            <div class="glass-card users-bar">
+                <div class="users-header">
+                    <h4 class="inline-title"><i data-lucide="users"></i> <span>Terhubung (<span id="user-count">1</span>)</span></h4>
+                    <button id="btn-switch-role" class="btn-mini nowrap">
+                        <i data-lucide="repeat"></i> Peran: <span id="current-role-badge">---</span>
+                    </button>
+                </div>
+                <div id="connected-users-list" class="users-chips"></div>
+            </div>
+
+            <!-- PANEL PENGIRIM (SATU TOMBOL KIRIM + MULTI LINK) -->
+            <div id="panel-sender" class="workspace-panel hidden">
+                <div class="glass-card upload-zone" id="drop-zone">
+                    <input type="file" id="file-input" multiple hidden>
+                    <div class="upload-icon"><i data-lucide="upload-cloud"></i></div>
+                    <h3>Pilih atau Tarik File</h3>
+                    <p>Bisa pilih banyak file sekaligus.</p>
+                    <button id="btn-browse-files" class="btn-primary nowrap">Pilih File</button>
+                </div>
+
+                <div class="glass-card queue-card">
+                    <div class="queue-header">
+                        <h4>Target</h4>
+                        <select id="target-receiver-select" class="glass-select">
+                            <option value="all">Semua Penerima</option>
+                        </select>
+                    </div>
+
+                    <div id="selected-files-list" class="file-list">
+                        <p class="empty-state">Belum ada file.</p>
+                    </div>
+
+                    <div class="unified-text-box">
+                        <div class="text-box-top">
+                            <label>Teks / Link (Opsional)</label>
+                            <button type="button" id="btn-add-link" class="btn-mini nowrap">
+                                <i data-lucide="plus"></i> Tambah Link
+                            </button>
+                        </div>
+                        <div id="text-inputs-container" class="text-inputs-list">
+                            <div class="text-input-row">
+                                <input type="text" class="multi-text-input" placeholder="Tempel link atau tulis teks...">
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="btn-send-all" class="btn-primary full-width nowrap">
+                        <i data-lucide="send"></i> Kirim
+                    </button>
+                </div>
+            </div>
+
+            <!-- PANEL PENERIMA -->
+            <div id="panel-receiver" class="workspace-panel hidden">
+                <div class="glass-card inbox-card">
+                    <div class="inbox-header">
+                        <div>
+                            <h3 class="inline-title"><i data-lucide="inbox"></i> <span>Kotak Masuk</span></h3>
+                            <p class="small-muted">Tidak terunduh otomatis.</p>
+                        </div>
+                        <button id="btn-clear-inbox" class="btn-mini danger nowrap"><i data-lucide="trash-2"></i> Hapus</button>
+                    </div>
+
+                    <div id="received-files-list" class="file-list">
+                        <div class="empty-state">
+                            <p>Menunggu data masuk...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

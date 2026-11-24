@@ -1,0 +1,13 @@
+{
+  "name": "aerodrop-p2p-transfer",
+  "version": "1.0.0",
+  "description": "Zero-database multi-user file transfer with QR session and Frosted Glass UI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  }
+}
