@@ -1,34 +1,36 @@
 # AeroDrop
 
-Aplikasi kirim file dan teks antarperangkat dalam satu sesi QR. Tanpa database: sesi dan daftar perangkat hanya disimpan di memori server.
+Kirim file dan teks antarperangkat dalam satu sesi QR. Real-time memakai WebSocket asli di Cloudflare Workers + Durable Objects, tanpa database permanen dan tanpa server yang perlu dinyalakan sendiri.
 
-## Dipakai orang lain (tanpa npm)
+## Dipakai orang lain
 
-Aplikasi ini **bukan situs statis**: `socket.io` butuh proses Node yang terus hidup. Karena itu GitHub Pages saja tidak bisa dipakai apa adanya. Cara paling mudah:
+Buka URL deploy, izinkan kamera, lalu bagikan QR atau ID sesi. Pemakai **tidak perlu** Node, npm, atau `npm start`.
 
-1. Push repo ini ke GitHub (remote sudah ada: `lianbelian/aerodrop-app`).
-2. Buka [Render Dashboard](https://dashboard.render.com/) → **New** → **Blueprint** → hubungkan GitHub → pilih **hanya** repo `lianbelian/aerodrop-app`.
-3. `render.yaml` terdeteksi otomatis: build `npm install`, start `node server.js`, plan **Free**, health check `/health`.
-4. Klik **Apply**, tunggu deploy selesai, lalu bagikan URL `https://aerodrop.onrender.com` (atau URL yang muncul) ke orang lain.
+URL produksi: `https://aerodrop-app.<subdomain-akun>.workers.dev` (akan diisi setelah deploy).
 
-Mereka cukup membuka URL dan memindai QR. Tidak perlu Node, npm, atau `npm start`.
+## Deploy ke Cloudflare (gratis, tanpa kartu)
 
-Alternatif tanpa blueprint: **New → Web Service** → repo yang sama → plan **Free** → start command `node server.js`. Hindari Vercel/serverless untuk versi ini karena WebSocket butuh koneksi yang persisten.
+1. Pastikan repo ini sudah di-push ke `lianbelian/aerodrop-app`.
+2. Di folder proyek: `npm install`.
+3. Login Cloudflare: `npx wrangler login`.
+4. Deploy: `npm run deploy`.
+5. Wrangler akan menampilkan URL `*.workers.dev`. Bagikan URL itu.
 
-## Jalankan lokal (opsional, untuk pengembangan)
+Konfigurasi ada di `wrangler.jsonc`: static assets dari `public/`, endpoint WebSocket di `/ws`, dan satu Durable Object (`Hub`) untuk koordinasi sesi.
+
+## Jalankan lokal
 
 ```bash
 npm install
-npm start
+npm run dev
 ```
 
-Lalu buka `http://localhost:3000`.
+Lalu buka URL lokal yang ditampilkan Wrangler (biasanya `http://localhost:8787`).
 
-## Catatan
+## Batasan
 
-- `PORT` diatur otomatis oleh host; lokal default `3000`.
-- `GET /health` dipakai untuk health check hosting.
-- Paket `render.yaml` dan `Procfile` sudah disiapkan, jadi tidak ada perintah khusus di dashboard selain memilih repo.
-- Render Free: $0/bulan, 512 MB RAM, 750 jam instance/bulan, 5 GB bandwidth/bulan, WebSocket didukung. Service tidur setelah 15 menit tanpa trafik dan bangun lagi ~1 menit saat ada kunjungan. Cocok untuk demo/hobi, bukan produksi. Tanpa kartu kartenya pun bisa; kalau kuota terlampaui, service disuspend sampai bulan berikutnya.
-- Batas buffer Socket.IO adalah 100 MB per pesan. File tidak disimpan permanen dan sesi hilang saat server restart.
-- Siapa pun yang tahu kode sesi bisa masuk ke ruangan itu. Jangan dipakai untuk data sensitif tanpa autentikasi tambahan.
+- Workers Free: 100.000 request/hari, 10 ms CPU per request, tanpa kartu kredit.
+- Tidak ada sleep/wake-up seperti host PaaS gratis; WebSocket langsung aktif.
+- File dibatasi **1 MB per file** karena dikirim sebagai teks base64 di dalam pesan WebSocket. File tidak disimpan permanen; pesan hanya berlangsung saat sesi aktif.
+- Siapa pun yang tahu ID sesi bisa masuk ruangan itu. Jangan dipakai untuk data sensitif tanpa autentikasi tambahan.
+- Server Node lama (`server.js`, Socket.IO, `render.yaml`, `Procfile`) sudah dihapus karena Render mewajibkan kartu untuk verifikasi akun.

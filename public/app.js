@@ -1,4 +1,75 @@
-const socket = io();
+const socket = createRealtimeSocket();
+const MAX_FILE_BYTES = 1024 * 1024;
+
+function createRealtimeSocket() {
+    const listeners = new Map();
+    const outbox = [];
+    let ws = null;
+    let retries = 0;
+    let reconnectTimer = null;
+    let hasOpened = false;
+
+    const api = {
+        id: null,
+        emit(type, data) {
+            const payload = JSON.stringify({ type, data });
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(payload);
+            } else {
+                outbox.push(payload);
+            }
+        },
+        on(type, callback) {
+            if (!listeners.has(type)) listeners.set(type, new Set());
+            listeners.get(type).add(callback);
+        }
+    };
+
+    function connect() {
+        const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${scheme}//${window.location.host}/ws`);
+
+        ws.addEventListener('open', () => {
+            retries = 0;
+            while (outbox.length) ws.send(outbox.shift());
+            if (hasOpened) {
+                api.emit('join-room', {
+                    roomId: currentRoomId,
+                    deviceName,
+                    role: currentRole || 'standby'
+                });
+            }
+            hasOpened = true;
+        });
+
+        ws.addEventListener('message', (event) => {
+            let message;
+            try {
+                message = JSON.parse(event.data);
+            } catch {
+                return;
+            }
+            if (message.type === 'welcome') {
+                api.id = message.data.id;
+                return;
+            }
+            const callbacks = listeners.get(message.type);
+            if (callbacks) callbacks.forEach((callback) => callback(message.data));
+        });
+
+        ws.addEventListener('close', () => {
+            const delay = Math.min(1000 * 2 ** retries, 15000);
+            retries += 1;
+            reconnectTimer = window.setTimeout(connect, delay);
+        });
+
+        ws.addEventListener('error', () => ws.close());
+    }
+
+    connect();
+    return api;
+}
+
 lucide.createIcons();
 
 let currentRoomId = generateSessionId();
@@ -281,7 +352,15 @@ function resetTextInputs() {
 }
 
 function handleFiles(files) {
-    const newEntries = Array.from(files).map(file => ({
+    const allFiles = Array.from(files);
+    const accepted = allFiles.filter(file => file.size <= MAX_FILE_BYTES);
+    const skipped = allFiles.length - accepted.length;
+
+    if (skipped > 0) {
+        showToast(`${skipped} file dilewati (maksimal 1 MB per file).`);
+    }
+
+    const newEntries = accepted.map(file => ({
         file,
         previewUrl: URL.createObjectURL(file)
     }));
@@ -395,6 +474,8 @@ socket.on('receive-text', (payload) => {
         pendingInboxItems.push({ type: 'text', data: payload });
     }
 });
+
+socket.on('app-error', (message) => showToast(message));
 
 function renderIncomingFile({ fileName, fileType, fileSize, fileData, senderName, timestamp }) {
     const inbox = document.getElementById('received-files-list');
