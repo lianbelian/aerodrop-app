@@ -6,7 +6,7 @@ Kirim file dan teks antarperangkat dalam satu sesi QR. Real-time memakai WebSock
 
 Buka URL deploy, izinkan kamera, lalu bagikan QR atau ID sesi. Pemakai **tidak perlu** Node, npm, atau `npm start`.
 
-URL produksi: `https://aerodrop-app.<subdomain-akun>.workers.dev` (akan diisi setelah deploy).
+URL produksi: **https://aerodrop-app.lianbelian.workers.dev**
 
 ## Deploy ke Cloudflare (gratis, tanpa kartu)
 
