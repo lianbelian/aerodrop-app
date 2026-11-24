@@ -9,6 +9,10 @@ const io = new Server(server, {
     maxHttpBufferSize: 1e8
 });
 
+app.get('/health', (_req, res) => {
+    res.status(200).json({ ok: true });
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const activeRooms = new Map();
