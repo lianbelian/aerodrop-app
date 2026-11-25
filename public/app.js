@@ -79,6 +79,8 @@ let html5QrCode = null;
 let selectedFiles = [];
 let pendingInboxItems = []; // Menampung file/link yang masuk saat user belum milih peran
 let notificationsEnabled = true;
+const previewStore = new Map();
+let previewCounter = 0;
 
 const urlParams = new URLSearchParams(window.location.search);
 const joinedRoomFromUrl = urlParams.get('room');
@@ -486,6 +488,8 @@ function renderIncomingFile({ fileName, fileType, fileSize, fileData, senderName
     const blob = new Blob([decodeBase64ToBytes(fileData)], { type: fileType || 'application/octet-stream' });
     const blobUrl = URL.createObjectURL(blob);
     const thumbHtml = buildFileThumbnailHtml(fileType, fileName, blobUrl);
+    const previewId = `pv-${++previewCounter}`;
+    previewStore.set(previewId, { fileName, fileType, blobUrl });
 
     const item = document.createElement('div');
     item.className = 'file-item';
@@ -498,7 +502,7 @@ function renderIncomingFile({ fileName, fileType, fileSize, fileData, senderName
             </div>
         </div>
         <div class="item-actions">
-            <a href="${blobUrl}" target="_blank" rel="noopener noreferrer" class="action-btn item-btn-ghost nowrap">Lihat</a>
+            <button type="button" class="action-btn item-btn-ghost nowrap" onclick="openFilePreview('${previewId}')">Lihat</button>
             <a href="${blobUrl}" download="${escapeHtml(fileName)}" class="action-btn item-btn-primary nowrap">Unduh</a>
         </div>
     `;
@@ -536,6 +540,34 @@ function renderIncomingText({ text, senderName, timestamp }) {
     inbox.prepend(item);
     lucide.createIcons();
 }
+
+window.openFilePreview = (previewId) => {
+    const entry = previewStore.get(previewId);
+    if (!entry) return;
+
+    const { fileName, fileType, blobUrl } = entry;
+    const content = document.getElementById('preview-content');
+    const download = document.getElementById('preview-download');
+    const lowerMime = (fileType || '').toLowerCase();
+    const lowerName = (fileName || '').toLowerCase();
+
+    document.getElementById('preview-title').textContent = fileName;
+    download.href = blobUrl;
+    download.download = fileName;
+
+    if (lowerMime.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(lowerName)) {
+        content.innerHTML = `<img src="${blobUrl}" alt="${escapeAttr(fileName)}">`;
+    } else if (lowerMime.startsWith('video/') || /\.(mp4|webm|ogg|mov|mkv)$/i.test(lowerName)) {
+        content.innerHTML = `<video src="${blobUrl}" controls></video>`;
+    } else if (lowerMime === 'application/pdf' || /\.pdf$/i.test(lowerName)) {
+        content.innerHTML = `<iframe src="${blobUrl}" title="${escapeAttr(fileName)}"></iframe>`;
+    } else {
+        content.innerHTML = '<p class="empty-state">Pratinjau tidak tersedia. Silakan unduh.</p>';
+    }
+
+    lucide.createIcons();
+    document.getElementById('preview-modal').classList.add('active');
+};
 
 function decodeBase64ToBytes(fileData) {
     try {

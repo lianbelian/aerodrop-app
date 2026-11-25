@@ -8,7 +8,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
     <div class="aurora-bg">
@@ -111,6 +111,18 @@
                     <span class="slider round"></span>
                 </label>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL 3: PREVIEW FILE -->
+    <div id="preview-modal" class="modal-backdrop">
+        <div class="glass-card modal-box preview-box">
+            <div class="modal-header">
+                <h3 class="inline-title"><i data-lucide="eye"></i> <span id="preview-title">Pratinjau</span></h3>
+                <button class="btn-icon close-modal" data-target="preview-modal"><i data-lucide="x"></i></button>
+            </div>
+            <div id="preview-content" class="preview-content"></div>
+            <a id="preview-download" class="btn-primary full-width nowrap" download="">Unduh</a>
         </div>
     </div>
 
@@ -280,6 +292,6 @@
         </section>
     </main>
 
-    <script src="app.js?v=2"></script>
+    <script src="app.js?v=3"></script>
 </body>
 </html>
