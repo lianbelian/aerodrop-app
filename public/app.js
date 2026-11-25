@@ -421,18 +421,20 @@ document.getElementById('btn-send-all').addEventListener('click', () => {
         selectedFiles.forEach(({ file, previewUrl }) => {
             const reader = new FileReader();
             reader.onload = () => {
+                const dataUrl = String(reader.result || '');
+                const fileData = dataUrl.slice(dataUrl.indexOf(',') + 1);
                 socket.emit('send-file', {
                     roomId: currentRoomId,
                     fileName: file.name,
                     fileType: file.type,
                     fileSize: file.size,
-                    fileData: reader.result,
+                    fileData,
                     senderName: deviceName,
                     targetId: targetId
                 });
                 if (previewUrl) URL.revokeObjectURL(previewUrl);
             };
-            reader.readAsArrayBuffer(file);
+            reader.readAsDataURL(file);
         });
         sentCount += selectedFiles.length;
         selectedFiles = [];
@@ -481,7 +483,7 @@ function renderIncomingFile({ fileName, fileType, fileSize, fileData, senderName
     const inbox = document.getElementById('received-files-list');
     clearEmptyState(inbox);
 
-    const blob = new Blob([fileData], { type: fileType || 'application/octet-stream' });
+    const blob = new Blob([decodeBase64ToBytes(fileData)], { type: fileType || 'application/octet-stream' });
     const blobUrl = URL.createObjectURL(blob);
     const thumbHtml = buildFileThumbnailHtml(fileType, fileName, blobUrl);
 
@@ -533,6 +535,18 @@ function renderIncomingText({ text, senderName, timestamp }) {
     `;
     inbox.prepend(item);
     lucide.createIcons();
+}
+
+function decodeBase64ToBytes(fileData) {
+    try {
+        const binary = atob(String(fileData || ''));
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        return bytes;
+    } catch {
+        showToast('File rusak saat diterima.');
+        return new Uint8Array();
+    }
 }
 
 function buildFileThumbnailHtml(mimeType, fileName, url) {
