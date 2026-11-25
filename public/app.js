@@ -1,5 +1,7 @@
 const socket = createRealtimeSocket();
-const MAX_FILE_BYTES = 1024 * 1024;
+const MAX_FILE_BYTES = 85 * 1024 * 1024;
+const CHUNK_BYTES = 256 * 1024;
+const FILE_ID_BYTES = 24;
 
 function createRealtimeSocket() {
     const listeners = new Map();
@@ -268,7 +270,7 @@ function setRole(role) {
         const itemsToFlush = [...pendingInboxItems];
         pendingInboxItems = [];
         itemsToFlush.forEach(entry => {
-            if (entry.type === 'file') {
+            if (entry.type === 'fileBlob') {
                 renderIncomingFile(entry.data);
             } else if (entry.type === 'text') {
                 renderIncomingText(entry.data);
@@ -359,7 +361,7 @@ function handleFiles(files) {
     const skipped = allFiles.length - accepted.length;
 
     if (skipped > 0) {
-        showToast(`${skipped} file dilewati (maksimal 1 MB per file).`);
+        showToast(`${skipped} file dilewati (maksimal 85 MB per file).`);
     }
 
     const newEntries = accepted.map(file => ({
@@ -406,7 +408,7 @@ window.removeSelectedFile = (index) => {
     renderSelectedFiles();
 };
 
-document.getElementById('btn-send-all').addEventListener('click', () => {
+document.getElementById('btn-send-all').addEventListener('click', async () => {
     const targetId = document.getElementById('target-receiver-select').value;
     const textValues = Array.from(document.querySelectorAll('.multi-text-input'))
         .map(el => el.value.trim())
@@ -417,33 +419,18 @@ document.getElementById('btn-send-all').addEventListener('click', () => {
         return;
     }
 
-    let sentCount = 0;
+    const button = document.getElementById('btn-send-all');
+    button.disabled = true;
 
-    if (selectedFiles.length > 0) {
-        selectedFiles.forEach(({ file, previewUrl }) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const dataUrl = String(reader.result || '');
-                const fileData = dataUrl.slice(dataUrl.indexOf(',') + 1);
-                socket.emit('send-file', {
-                    roomId: currentRoomId,
-                    fileName: file.name,
-                    fileType: file.type,
-                    fileSize: file.size,
-                    fileData,
-                    senderName: deviceName,
-                    targetId: targetId
-                });
-                if (previewUrl) URL.revokeObjectURL(previewUrl);
-            };
-            reader.readAsDataURL(file);
-        });
-        sentCount += selectedFiles.length;
+    try {
+        const filesToSend = [...selectedFiles];
+        for (const { file, previewUrl } of filesToSend) {
+            await sendFileChunks(file, targetId);
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+        }
         selectedFiles = [];
         renderSelectedFiles();
-    }
 
-    if (textValues.length > 0) {
         textValues.forEach(val => {
             socket.emit('send-text', {
                 roomId: currentRoomId,
@@ -452,20 +439,86 @@ document.getElementById('btn-send-all').addEventListener('click', () => {
                 targetId: targetId
             });
         });
-        sentCount += textValues.length;
         resetTextInputs();
+        showToast(`Terkirim (${filesToSend.length + textValues.length} item).`);
+    } catch (err) {
+        showToast('Gagal mengirim: ' + (err && err.message ? err.message : String(err)));
+    } finally {
+        button.disabled = false;
     }
-
-    showToast(`Terkirim (${sentCount} item).`);
 });
 
+function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const step = 0x8000;
+    for (let i = 0; i < bytes.length; i += step) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+    }
+    return btoa(binary);
+}
+
+function base64ToUint8Array(base64) {
+    const binary = atob(String(base64 || ''));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+
+async function sendFileChunks(file, targetId) {
+    const fileId = `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.slice(0, FILE_ID_BYTES);
+
+    socket.emit('file-start', {
+        roomId: currentRoomId,
+        fileId,
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        targetId
+    });
+
+    let offset = 0;
+    while (offset < file.size) {
+        const chunk = await file.slice(offset, offset + CHUNK_BYTES).arrayBuffer();
+        socket.emit('file-chunk', {
+            roomId: currentRoomId,
+            fileId,
+            targetId,
+            data: arrayBufferToBase64(chunk)
+        });
+        offset += chunk.byteLength;
+    }
+
+    socket.emit('file-end', { roomId: currentRoomId, fileId, targetId });
+}
+
 // 7. PENERIMA (TERIMA FILE & LINK — AMAN MESKI BARU PILIH PERAN)
-socket.on('receive-file', (payload) => {
-    showToast(`File: ${payload.fileName}`);
+const incomingFiles = new Map();
+
+socket.on('receive-file-start', (payload) => {
+    incomingFiles.set(payload.fileId, { meta: payload, chunks: [], received: 0 });
+    showToast(`Menerima: ${payload.fileName}`);
+});
+
+socket.on('receive-file-chunk', ({ fileId, data }) => {
+    const entry = incomingFiles.get(fileId);
+    if (!entry) return;
+    const bytes = base64ToUint8Array(data);
+    entry.chunks.push(bytes);
+    entry.received += bytes.byteLength;
+});
+
+socket.on('receive-file-end', ({ fileId }) => {
+    const entry = incomingFiles.get(fileId);
+    if (!entry) return;
+    incomingFiles.delete(fileId);
+
+    const blob = new Blob(entry.chunks, { type: entry.meta.fileType || 'application/octet-stream' });
+    const data = { ...entry.meta, blob };
     if (currentRole === 'receiver') {
-        renderIncomingFile(payload);
+        renderIncomingFile(data);
     } else {
-        pendingInboxItems.push({ type: 'file', data: payload });
+        pendingInboxItems.push({ type: 'fileBlob', data });
     }
 });
 
@@ -481,11 +534,10 @@ socket.on('receive-text', (payload) => {
 
 socket.on('app-error', (message) => showToast(message));
 
-function renderIncomingFile({ fileName, fileType, fileSize, fileData, senderName, timestamp }) {
+function renderIncomingFile({ fileName, fileType, fileSize, blob, senderName, timestamp }) {
     const inbox = document.getElementById('received-files-list');
     clearEmptyState(inbox);
 
-    const blob = new Blob([decodeBase64ToBytes(fileData)], { type: fileType || 'application/octet-stream' });
     const blobUrl = URL.createObjectURL(blob);
     const thumbHtml = buildFileThumbnailHtml(fileType, fileName, blobUrl);
     const previewId = `pv-${++previewCounter}`;
@@ -568,18 +620,6 @@ window.openFilePreview = (previewId) => {
     lucide.createIcons();
     document.getElementById('preview-modal').classList.add('active');
 };
-
-function decodeBase64ToBytes(fileData) {
-    try {
-        const binary = atob(String(fileData || ''));
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-        return bytes;
-    } catch {
-        showToast('File rusak saat diterima.');
-        return new Uint8Array();
-    }
-}
 
 function buildFileThumbnailHtml(mimeType, fileName, url) {
     const lowerMime = (mimeType || '').toLowerCase();

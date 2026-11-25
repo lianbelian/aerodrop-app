@@ -14,7 +14,10 @@
                 "name": "HUB",
                 "class_name": "Hub"
             }
-        ]
+        ],
+        "code_update_strategy": {
+            "mode": "immediate"
+        }
     },
     "exports": {
         "Hub": {

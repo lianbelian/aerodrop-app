@@ -31,6 +31,6 @@ Lalu buka URL lokal yang ditampilkan Wrangler (biasanya `http://localhost:8787`)
 
 - Workers Free: 100.000 request/hari, 10 ms CPU per request, tanpa kartu kredit.
 - Tidak ada sleep/wake-up seperti host PaaS gratis; WebSocket langsung aktif.
-- File dibatasi **1 MB per file** karena dikirim sebagai teks base64 di dalam pesan WebSocket. File tidak disimpan permanen; pesan hanya berlangsung saat sesi aktif.
+- File dibatasi **85 MB per file**. File dikirim sebagai potongan biner WebSocket, bukan base64, agar tidak membengkak dan tetap melewati batas pesan Cloudflare. File tidak disimpan permanen; pesan hanya berlangsung saat sesi aktif.
 - Siapa pun yang tahu ID sesi bisa masuk ruangan itu. Jangan dipakai untuk data sensitif tanpa autentikasi tambahan.
 - Server Node lama (`server.js`, Socket.IO, `render.yaml`, `Procfile`) sudah dihapus karena Render mewajibkan kartu untuk verifikasi akun.

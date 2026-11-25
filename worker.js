@@ -1,5 +1,5 @@
-const MAX_FILE_BYTES = 1024 * 1024;
-const MAX_BASE64_CHARS = Math.ceil(MAX_FILE_BYTES / 3) * 4 + 8;
+const MAX_FILE_BYTES = 85 * 1024 * 1024;
+const MAX_CHUNK_BASE64 = Math.ceil((256 * 1024) / 3) * 4 + 8;
 
 const json = (value, status = 200) => new Response(JSON.stringify(value), {
     status,
@@ -32,6 +32,10 @@ function cleanRoomId(value) {
     return String(value || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'default';
 }
 
+function cleanFileId(value) {
+    return String(value || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24);
+}
+
 export class Hub {
     constructor(state) {
         this.state = state;
@@ -46,12 +50,14 @@ export class Hub {
         server.accept();
 
         const id = `${Date.now().toString(36)}-${(this.counter++).toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-        const user = { id, name: 'Device', role: 'standby', roomId: null };
+        const user = { id, name: 'Device', role: 'standby', roomId: null, pendingFile: null };
         this.sessions.set(server, user);
 
         this.send(server, 'welcome', { id });
 
         server.addEventListener('message', (event) => {
+            if (typeof event.data !== 'string') return;
+
             let message;
             try {
                 message = JSON.parse(event.data);
@@ -62,6 +68,7 @@ export class Hub {
         });
 
         const close = () => {
+            user.pendingFile = null;
             this.leaveRoom(server, user);
             this.sessions.delete(server);
         };
@@ -85,24 +92,50 @@ export class Hub {
             return;
         }
 
-        if (type === 'send-file') {
+        if (type === 'file-start') {
             if (data.roomId && cleanRoomId(data.roomId) !== user.roomId) return;
-            const fileData = String(data.fileData || '');
-            if (fileData.length > MAX_BASE64_CHARS) {
-                this.send(socket, 'app-error', `File "${String(data.fileName || 'tanpa nama')}" terlalu besar. Maksimal 1 MB per file.`);
+            const fileId = cleanFileId(data.fileId);
+            const fileSize = Number(data.fileSize) || 0;
+            if (!fileId) return;
+            if (fileSize <= 0 || fileSize > MAX_FILE_BYTES) {
+                this.send(socket, 'app-error', `File "${String(data.fileName || 'tanpa nama')}" melebihi batas 85 MB.`);
                 return;
             }
 
+            user.pendingFile = { fileId, targetId: data.targetId };
             const payload = {
-                fileId: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                fileId,
                 fileName: String(data.fileName || 'file').slice(0, 200),
                 fileType: String(data.fileType || 'application/octet-stream').slice(0, 100),
-                fileSize: Number(data.fileSize) || 0,
-                fileData,
+                fileSize,
                 senderName: user.name,
                 timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
             };
-            this.deliver(socket, user, data.targetId, 'receive-file', payload);
+            this.deliver(socket, user, data.targetId, 'receive-file-start', payload);
+            return;
+        }
+
+        if (type === 'file-chunk') {
+            if (data.roomId && cleanRoomId(data.roomId) !== user.roomId) return;
+            const pending = user.pendingFile;
+            if (!pending || pending.fileId !== cleanFileId(data.fileId)) return;
+            const chunk = String(data.data || '');
+            if (!chunk || chunk.length > MAX_CHUNK_BASE64) {
+                this.send(socket, 'app-error', 'Potongan file terlalu besar.');
+                return;
+            }
+            this.deliver(socket, user, pending.targetId, 'receive-file-chunk', {
+                fileId: pending.fileId,
+                data: chunk
+            });
+            return;
+        }
+
+        if (type === 'file-end') {
+            const pending = user.pendingFile;
+            if (!pending) return;
+            user.pendingFile = null;
+            this.deliver(socket, user, pending.targetId, 'receive-file-end', { fileId: pending.fileId });
             return;
         }
 
@@ -150,20 +183,23 @@ export class Hub {
         if (shouldBroadcast) this.broadcastRoomUsers(roomId);
     }
 
-    deliver(sender, senderUser, targetId, type, payload) {
+    targetSockets(sender, senderUser, targetId) {
         if (targetId && targetId !== 'all') {
+            const out = [];
             for (const [socket, user] of this.sessions) {
-                if (user.id === targetId && user.roomId === senderUser.roomId) {
-                    this.send(socket, type, payload);
-                }
+                if (user.id === targetId && user.roomId === senderUser.roomId) out.push(socket);
             }
-            return;
+            return out;
         }
 
         const room = this.rooms.get(senderUser.roomId);
-        if (!room) return;
-        for (const socket of room.keys()) {
-            if (socket !== sender) this.send(socket, type, payload);
+        if (!room) return [];
+        return Array.from(room.keys()).filter((socket) => socket !== sender);
+    }
+
+    deliver(sender, senderUser, targetId, type, payload) {
+        for (const socket of this.targetSockets(sender, senderUser, targetId)) {
+            this.send(socket, type, payload);
         }
     }
 
